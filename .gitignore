@@ -17,7 +17,6 @@ build/
 
 # Database backups
 deploy/backups/
-*.sql
 *.dump
 deploy/backups/
 deployDocker/backups/
