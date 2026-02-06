@@ -85,8 +85,19 @@ if [ ! -f "$SCRIPT_DIR/.env" ]; then
     echo "Creating .env file..."
     echo ""
     
-    # Get EC2 public IP automatically
-    EC2_PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "localhost")
+    # Get EC2 public IP automatically (supports IMDSv2)
+    echo "Detecting EC2 public IP..."
+    TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null)
+    if [ -n "$TOKEN" ]; then
+        EC2_PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+    else
+        EC2_PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+    fi
+    
+    # Fallback to external IP service
+    if [ -z "$EC2_PUBLIC_IP" ]; then
+        EC2_PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s icanhazip.com 2>/dev/null || echo "localhost")
+    fi
     
     echo -e "${BLUE}Please provide the following information:${NC}"
     echo ""
@@ -221,8 +232,25 @@ else
     echo -e "${YELLOW}⚠️  Frontend not responding (may need a moment to start)${NC}"
 fi
 
-# Get EC2 public IP
-EC2_PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+# Get EC2 public IP (supports both IMDSv1 and IMDSv2)
+echo ""
+echo "Detecting EC2 public IP..."
+# Try IMDSv2 first (with token)
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null)
+if [ -n "$TOKEN" ]; then
+    EC2_PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+else
+    # Fallback to IMDSv1
+    EC2_PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+fi
+
+if [ -z "$EC2_PUBLIC_IP" ]; then
+    echo -e "${YELLOW}⚠️  Could not detect EC2 public IP${NC}"
+    echo "Getting IP from alternate source..."
+    EC2_PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s icanhazip.com 2>/dev/null || echo "localhost")
+fi
+
+echo "Detected IP: $EC2_PUBLIC_IP"
 
 #############################################
 # Deployment Summary
